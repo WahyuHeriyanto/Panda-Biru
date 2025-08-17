@@ -94,7 +94,7 @@ app.post("/v1/report/attendance", authMiddleware, async (req, res) => {
   }
 });
 
-//  SUBMIT PRODUCT 
+// SUBMIT PRODUCT
 app.post("/v1/report/submit-product", authMiddleware, async (req, res) => {
   const products = req.body;
   if (!Array.isArray(products) || products.length === 0) {
@@ -104,8 +104,10 @@ app.post("/v1/report/submit-product", authMiddleware, async (req, res) => {
   try {
     for (const p of products) {
       await pool.query(
-        "UPDATE product SET is_available = $1, created_at = CURRENT_TIMESTAMP WHERE user_id = $2 AND id = $3",
-        [p.is_available, p.user_id, p.product_id]
+        `UPDATE product 
+         SET is_available = $1, created_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $2 AND product_id = $3`,
+        [p.is_available, req.user.id, p.product_id]
       );
     }
     res.json({ status: "success", message: "Product report berhasil diupdate" });
@@ -114,6 +116,7 @@ app.post("/v1/report/submit-product", authMiddleware, async (req, res) => {
     res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 });
+
 
 // SUBMIT PROMO 
 app.post("/v1/report/submit-promo", authMiddleware, async (req, res) => {
