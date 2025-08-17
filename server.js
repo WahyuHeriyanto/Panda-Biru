@@ -14,34 +14,35 @@ app.use(express.json());
 async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Token diperlukan" });
+    return res.status(401).json({ status: "failed", message: "Token diperlukan" });
   }
 
   const token = authHeader.split(" ")[1];
   try {
     const result = await pool.query("SELECT * FROM users WHERE token = $1", [token]);
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: "Token tidak valid" });
+      return res.status(401).json({ status: "failed", message: "Token tidak valid" });
     }
     req.user = result.rows[0];
     next();
   } catch (err) {
     console.error("Auth error:", err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 }
 
-// Login
+// LOGIN 
 app.post("/v1/login", async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
-    return res.status(400).json({ error: "Username dan password wajib" });
+    return res.status(400).json({ status: "failed", message: "Username dan password wajib" });
 
   try {
-    // Cek user
     let result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
     let user;
+
     if (result.rows.length === 0) {
+      
       const password_hash = await bcrypt.hash(password, 10);
       const token = crypto.randomBytes(32).toString("hex");
       const insertResult = await pool.query(
@@ -52,7 +53,9 @@ app.post("/v1/login", async (req, res) => {
     } else {
       user = result.rows[0];
       const match = await bcrypt.compare(password, user.password_hash);
-      if (!match) return res.status(401).json({ error: "Password salah" });
+      if (!match)
+        return res.status(401).json({ status: "failed", message: "Password salah" });
+      
       // Refresh token
       const newToken = crypto.randomBytes(32).toString("hex");
       const updateResult = await pool.query(
@@ -61,63 +64,72 @@ app.post("/v1/login", async (req, res) => {
       );
       user = updateResult.rows[0];
     }
-    res.json({ message: "Login berhasil", token: user.token });
+
+    res.json({
+      status: "success",
+      message: "Login berhasil",
+      username: user.username,
+      token: user.token
+    });
   } catch (err) {
     console.error("Error di login:", err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 });
 
-// Attendance 
+// ATTENDANCE
 app.post("/v1/report/attendance", authMiddleware, async (req, res) => {
-  const { status } = req.body;
-  if (!status) return res.status(400).json({ error: "status wajib diisi" });
+  const { status, reason } = req.body;
+  if (!status) return res.status(400).json({ status: "failed", message: "status wajib diisi" });
 
   try {
-    const result = await pool.query(
-      "INSERT INTO attendance(user_id, status) VALUES($1,$2) RETURNING *",
-      [req.user.id, status]
+    await pool.query(
+      "INSERT INTO attendance(user_id, status, reason) VALUES($1,$2,$3)",
+      [req.user.id, status, reason || null]
     );
-    res.json({ message: "Attendance berhasil", attendance: result.rows[0] });
+    res.json({ status: "success", message: "Attendance berhasil disimpan" });
   } catch (err) {
     console.error("Error attendance:", err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 });
 
-// Submit Product
+//  SUBMIT PRODUCT 
 app.post("/v1/report/submit-product", authMiddleware, async (req, res) => {
-  const { store_name, product_name, barcode, is_available } = req.body;
-  if (!store_name || !product_name)
-    return res.status(400).json({ error: "store_name dan product_name wajib" });
+  const products = req.body;
+  if (!Array.isArray(products) || products.length === 0) {
+    return res.status(400).json({ status: "failed", message: "Data produk tidak valid" });
+  }
 
   try {
-    const result = await pool.query(
-      "INSERT INTO product(user_id, store_name, product_name, barcode, is_available) VALUES($1,$2,$3,$4,$5) RETURNING *",
-      [req.user.id, store_name, product_name, barcode || null, is_available ?? null]
-    );
-    res.json({ message: "Product report berhasil", product: result.rows[0] });
+    for (const p of products) {
+      await pool.query(
+        "UPDATE product SET is_available = $1, created_at = CURRENT_TIMESTAMP WHERE user_id = $2 AND id = $3",
+        [p.is_available, p.user_id, p.product_id]
+      );
+    }
+    res.json({ status: "success", message: "Product report berhasil diupdate" });
   } catch (err) {
     console.error("Error submit-product:", err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 });
 
-// Submit Promo
+// SUBMIT PROMO 
 app.post("/v1/report/submit-promo", authMiddleware, async (req, res) => {
   const { store_name, product_name, product_price, promo_price } = req.body;
   if (!store_name || !product_name || !product_price || !promo_price)
-    return res.status(400).json({ error: "Semua field wajib diisi" });
+    return res.status(400).json({ status: "failed", message: "Semua field wajib diisi" });
 
   try {
-    const result = await pool.query(
-      "INSERT INTO promo(user_id, store_name, product_name, product_price, promo_price) VALUES($1,$2,$3,$4,$5) RETURNING *",
+    await pool.query(
+      "INSERT INTO promo(user_id, store_name, product_name, product_price, promo_price) VALUES($1,$2,$3,$4,$5)",
       [req.user.id, store_name, product_name, product_price, promo_price]
     );
-    res.json({ message: "Promo report berhasil", promo: result.rows[0] });
+    res.json({ status: "success", message: "Promo report berhasil disimpan" });
   } catch (err) {
     console.error("Error submit-promo:", err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
   }
 });
 
