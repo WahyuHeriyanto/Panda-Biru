@@ -16,19 +16,25 @@ app.post("/v1/login", async (req, res) => {
     return res.status(400).json({ error: "Username dan password wajib" });
 
   try {
-    const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
-    if (result.rows.length === 0)
-      return res.status(401).json({ error: "User tidak ditemukan" });
+  const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+  console.log('Query result:', result.rows);
 
-    const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (!match) return res.status(401).json({ error: "Password salah" });
+  if (result.rows.length === 0)
+    return res.status(401).json({ error: "User tidak ditemukan" });
 
-    res.json({ message: "Login berhasil", user_id: user.id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Terjadi kesalahan server" });
-  }
+  const user = result.rows[0];
+  console.log('User data:', user);
+
+  const match = await bcrypt.compare(password, user.password_hash);
+  console.log('Password match:', match);
+
+  if (!match) return res.status(401).json({ error: "Password salah" });
+
+  res.json({ message: "Login berhasil", user_id: user.id });
+} catch (err) {
+  console.error('Error di login:', err);
+  res.status(500).json({ error: "Terjadi kesalahan server" });
+}
 });
 
 // ----------- Endpoint Report -----------
