@@ -117,6 +117,29 @@ app.post("/v1/report/submit-product", authMiddleware, async (req, res) => {
   }
 });
 
+// GET PRODUCTS
+app.get("/v1/products", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, user_id, product_id, created_at, store_name, product_name, barcode, is_available 
+       FROM product 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    res.json({
+      status: "success",
+      message: "Data produk berhasil diambil",
+      data: result.rows
+    });
+  } catch (err) {
+    console.error("Error get-products:", err);
+    res.status(500).json({ status: "failed", message: "Terjadi kesalahan server" });
+  }
+});
+
+
 
 // SUBMIT PROMO 
 app.post("/v1/report/submit-promo", authMiddleware, async (req, res) => {
